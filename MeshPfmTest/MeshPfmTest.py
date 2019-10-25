@@ -114,7 +114,7 @@ class Application(tk.Frame):
             if com_data:
                 self.log_window.insert(tk.END, com_data.decode('utf-8', 'ignore'))
                 self.log_window.see(tk.END)
-                if self.log_window.count(1.0, tk.END, 'lines') == 30000:
+                if self.log_window.count(1.0, tk.END, 'lines')[0] == 30000:
                     data_save = self.log_window.get(1.0, tk.END)
                     self.log_window.delete(1.0, tk.END)
                     def dump_file(data_save):
@@ -332,7 +332,6 @@ if __name__ == '__main__':
         root.destroy()
     root.protocol("WM_DELETE_WINDOW", destroy_handle)
     app.mainloop()
-
 
 
 
