@@ -57,6 +57,10 @@ class Application(tk.Frame):
         self.total_column = 1
         self.server_dict = dict()
         self.log_window = None
+        self.th_lock = threading.Lock()
+        self.th_add_server = None
+        self.th_add_total = None
+        self.th_add_hop = None
         # status bar
         self.status = tk.StringVar()
         self.status.set('COM Closed')
@@ -141,63 +145,68 @@ class Application(tk.Frame):
                         threading.Thread(target=self.update_panel_data, args=(update_data,)).start()
 
     def add_panel(self, update_data):
-        server_panel = tk.LabelFrame(self, text='server')
-        lock = threading.Lock()
-        lock.acquire()
-        if self.panel_row == 3:
-            self.panel_row = 1
-            self.panel_column += 1
-        else:
-            self.panel_row += 1
-        server_panel.grid(row=self.panel_row, column=self.panel_column, sticky=tk.NSEW)
-        lock.release()
-        # line 1
-        tk.Label(server_panel, relief='solid', text='Address', width=8).grid(row=0, column=0, padx=1, pady=1,
-                sticky=tk.NSEW)
-        tk.Label(server_panel, relief='solid', text='Rcv Count', width=8).grid(row=0, column=1, padx=1, pady=1,
-                sticky=tk.NSEW)
-        tk.Label(server_panel, relief='solid', text='Lost Rate', width=8).grid(row=0, column=2, padx=1, pady=1,
-                sticky=tk.NSEW)
-        tk.Label(server_panel, relief='solid', text='Time Use', width=8).grid(row=0, column=3, padx=1, pady=1, sticky=tk.NSEW)
-        tk.Label(server_panel, relief='groove', text=update_data['addr'], width=8, bg='yellow').grid(row=1, column=0, padx=1, pady=1,
-                sticky=tk.NSEW)
-        rcv_count_var = tk.Label(server_panel, relief='groove')
-        lost_rate_var = tk.Label(server_panel, relief='groove')
-        time_use_var = tk.Label(server_panel, relief='groove')
-        rcv_count_var.grid(row=1, column=1, padx=1, pady=1, sticky=tk.NSEW)
-        lost_rate_var.grid(row=1, column=2, padx=1, pady=1, sticky=tk.NSEW)
-        time_use_var.grid(row=1, column=3, padx=1, pady=1, sticky=tk.NSEW)
+        if self.th_add_server:
+            self.th_add_server.join()
+        def add_panel_thread():
+            server_panel = tk.LabelFrame(self, text='server')
+            if self.panel_row == 3:
+                self.panel_row = 1
+                self.panel_column += 1
+            else:
+                self.panel_row += 1
+            server_panel.grid(row=self.panel_row, column=self.panel_column, sticky=tk.NSEW)
+            # line 1
+            tk.Label(server_panel, relief='solid', text='Address', width=8).grid(row=0, column=0, padx=1, pady=1,
+                    sticky=tk.NSEW)
+            tk.Label(server_panel, relief='solid', text='Rcv Count', width=8).grid(row=0, column=1, padx=1, pady=1,
+                    sticky=tk.NSEW)
+            tk.Label(server_panel, relief='solid', text='Lost Rate', width=8).grid(row=0, column=2, padx=1, pady=1,
+                    sticky=tk.NSEW)
+            tk.Label(server_panel, relief='solid', text='Time Use', width=8).grid(row=0, column=3, padx=1, pady=1, sticky=tk.NSEW)
+            tk.Label(server_panel, relief='groove', text=update_data['addr'], width=8, bg='yellow').grid(row=1, column=0, padx=1, pady=1,
+                    sticky=tk.NSEW)
+            rcv_count_var = tk.Label(server_panel, relief='groove')
+            lost_rate_var = tk.Label(server_panel, relief='groove')
+            time_use_var = tk.Label(server_panel, relief='groove')
+            rcv_count_var.grid(row=1, column=1, padx=1, pady=1, sticky=tk.NSEW)
+            lost_rate_var.grid(row=1, column=2, padx=1, pady=1, sticky=tk.NSEW)
+            time_use_var.grid(row=1, column=3, padx=1, pady=1, sticky=tk.NSEW)
 
-        tk.Label(server_panel, relief='solid', text='HopCome', width=8).grid(row=2, column=0, padx=1, pady=1,
-                sticky=tk.NSEW)
-        tk.Label(server_panel, relief='solid', text='HopBack', width=8).grid(row=2, column=1, padx=1, pady=1,
-                sticky=tk.NSEW)
-        tk.Label(server_panel, relief='solid', text='Min').grid(row=2, column=2, padx=1, pady=1, sticky=tk.NSEW)
-        tk.Label(server_panel, relief='solid', text='Avg').grid(row=2, column=3, padx=1, pady=1, sticky=tk.NSEW)
-        relay1_var = tk.Label(server_panel, relief='groove')
-        relay2_var = tk.Label(server_panel, relief='groove')
-        min_var = tk.Label(server_panel, relief='groove')
-        avg_var = tk.Label(server_panel, relief='groove')
-        relay1_var.grid(row=3, column=0, padx=1, pady=1, sticky=tk.NSEW)
-        relay2_var.grid(row=3, column=1, padx=1, pady=1, sticky=tk.NSEW)
-        min_var.grid(row=3, column=2, padx=1, pady=1, sticky=tk.NSEW)
-        avg_var.grid(row=3, column=3, padx=1, pady=1, sticky=tk.NSEW)
+            tk.Label(server_panel, relief='solid', text='HopCome', width=8).grid(row=2, column=0, padx=1, pady=1,
+                    sticky=tk.NSEW)
+            tk.Label(server_panel, relief='solid', text='HopBack', width=8).grid(row=2, column=1, padx=1, pady=1,
+                    sticky=tk.NSEW)
+            tk.Label(server_panel, relief='solid', text='Min').grid(row=2, column=2, padx=1, pady=1, sticky=tk.NSEW)
+            tk.Label(server_panel, relief='solid', text='Avg').grid(row=2, column=3, padx=1, pady=1, sticky=tk.NSEW)
+            relay1_var = tk.Label(server_panel, relief='groove')
+            relay2_var = tk.Label(server_panel, relief='groove')
+            min_var = tk.Label(server_panel, relief='groove')
+            avg_var = tk.Label(server_panel, relief='groove')
+            relay1_var.grid(row=3, column=0, padx=1, pady=1, sticky=tk.NSEW)
+            relay2_var.grid(row=3, column=1, padx=1, pady=1, sticky=tk.NSEW)
+            min_var.grid(row=3, column=2, padx=1, pady=1, sticky=tk.NSEW)
+            avg_var.grid(row=3, column=3, padx=1, pady=1, sticky=tk.NSEW)
 
-        server_data = dict()
-        server_data['rcv_count_var'] = rcv_count_var
-        server_data['lost_rate_var'] = lost_rate_var
-        server_data['time_use_var'] = time_use_var
-        server_data['relay1_var'] = relay1_var
-        server_data['relay2_var'] = relay2_var
-        server_data['min_var'] = min_var
-        server_data['avg_var'] = avg_var
-        server_data['count'] = 0
-        server_data['min'] = 0xFFFF
-        server_data['avg'] = 0
-        self.server_dict[update_data['addr']] = server_data
-        self.update_panel_data(update_data)
+            server_data = dict()
+            server_data['rcv_count_var'] = rcv_count_var
+            server_data['lost_rate_var'] = lost_rate_var
+            server_data['time_use_var'] = time_use_var
+            server_data['relay1_var'] = relay1_var
+            server_data['relay2_var'] = relay2_var
+            server_data['min_var'] = min_var
+            server_data['avg_var'] = avg_var
+            server_data['count'] = 0
+            server_data['min'] = 0xFFFF
+            server_data['avg'] = 0
+            self.server_dict[update_data['addr']] = server_data
+            self.th_add_server = None
+            self.update_panel_data(update_data)
+        self.th_add_server = threading.Thread(target=add_panel_thread)
+        self.th_add_server.start()
 
     def update_panel_data(self, update_data):
+        if self.th_add_server:
+            self.th_add_server.join()
         server_data = self.server_dict[update_data['addr']]
         server_data['count'] += 1
         cur_time = int(update_data['diff'])
@@ -220,41 +229,47 @@ class Application(tk.Frame):
         name_hop = 'hop_%d' % (cur_ttl1+cur_ttl2)
         name_len = 'len_%d' % cur_len
         if self.server_dict.get(name_len, 'no') == 'no':
-            total_panel = tk.LabelFrame(self, text=name_len)
-            lock = threading.Lock()
-            lock.acquire()
-            total_panel.grid(row=0, column=self.total_column, sticky=tk.NSEW)
-            self.total_column += 1
-            lock.release()
-            total_data = dict()
-            total_data['raw_data'] = []
-            total_data['stat_data'] = [0]*30
-            total_data['row'] = 1
-            total_data['panel'] = total_panel
-            tk.Label(total_panel, relief='solid', text='Hop', width=8).grid(row=0, column=0, padx=1, pady=1,
-                    sticky=tk.NSEW)
-            tk.Label(total_panel, relief='solid', text='Max', width=8).grid(row=0, column=1, padx=1, pady=1,
-                    sticky=tk.NSEW)
-            tk.Label(total_panel, relief='solid', text='Min', width=8).grid(row=0, column=2, padx=1, pady=1,
-                    sticky=tk.NSEW)
-            tk.Label(total_panel, relief='solid', text='Avg', width=8).grid(row=0, column=3, padx=1, pady=1,
-                                                                                 sticky=tk.NSEW)
+            def add_total_thread():
+                total_panel = tk.LabelFrame(self, text=name_len)
+                total_panel.grid(row=0, column=self.total_column, sticky=tk.NSEW)
+                self.total_column += 1
+                total_data = dict()
+                total_data['raw_data'] = []
+                total_data['stat_data'] = [0]*30
+                #total_data['row'] = 1
+                total_data['panel'] = total_panel
+                tk.Label(total_panel, relief='solid', text='Hop', width=8).grid(row=0, column=0, padx=1, pady=1,
+                        sticky=tk.NSEW)
+                tk.Label(total_panel, relief='solid', text='Max', width=8).grid(row=0, column=1, padx=1, pady=1,
+                        sticky=tk.NSEW)
+                tk.Label(total_panel, relief='solid', text='Min', width=8).grid(row=0, column=2, padx=1, pady=1,
+                        sticky=tk.NSEW)
+                tk.Label(total_panel, relief='solid', text='Avg', width=8).grid(row=0, column=3, padx=1, pady=1,
+                                                                                sticky=tk.NSEW)
+                self.server_dict[name_len] = total_data
+                #self.th_lock.release()
+                self.th_add_total = None
+                self.update_total_panel(name_len, name_hop, cur_time)
 
-
-            self.server_dict[name_len] = total_data
-            self.update_total_panel(name_len, name_hop, cur_time)
+            if self.th_add_total:
+                self.th_add_total.join()
+            self.th_add_total = threading.Thread(target=add_total_thread)
+            self.th_add_total.start()
         else:
-            self.update_total_panel(name_len, name_hop, cur_time)
+            threading.Thread(target=self.update_total_panel, args=(name_len, name_hop, cur_time,)).start()
 
     def update_total_panel(self, name_len, name_hop, time_use):
+        if self.th_add_total:
+            self.th_add_total.join()
         total_data = self.server_dict[name_len]
-        lock = threading.Lock()
         def update_panel_data():
+            if self.th_add_hop:
+                self.th_add_hop.join()
             hop_data = total_data[name_hop]
             stat_index = time_use // 10
             if stat_index > 29:
                 stat_index = 29
-            lock.acquire()
+            #self.th_lock.acquire()
             #total_data['raw_data'].append(time_use)
             #if len(total_data['raw_data']) == 101:
             #    pass
@@ -268,24 +283,28 @@ class Application(tk.Frame):
             self.update_label(hop_data['max_var'], hop_data['max'])
             self.update_label(hop_data['min_var'], hop_data['min'])
             self.update_label(hop_data['avg_var'], '%.2f' % hop_data['avg'])
-            lock.release()
 
         if total_data.get(name_hop, 'no') == 'no':
-            lock.acquire()
-            cur_row = total_data['row']
-            total_data['row'] += 1
-            lock.release()
-            tk.Label(total_data['panel'] , relief='groove', text=name_hop).grid(row=cur_row, column=0, padx=1,
-                                                                                pady=1, sticky=tk.NSEW)
-            max_var = tk.Label(total_data['panel'] , relief='groove')
-            min_var = tk.Label(total_data['panel'] , relief='groove')
-            avg_var = tk.Label(total_data['panel'] , relief='groove')
-            max_var.grid(row=cur_row, column=1, padx=1, pady=1, sticky=tk.NSEW)
-            min_var.grid(row=cur_row, column=2, padx=1, pady=1, sticky=tk.NSEW)
-            avg_var.grid(row=cur_row, column=3, padx=1, pady=1, sticky=tk.NSEW)
-            total_data[name_hop] = {'max_var': max_var, 'min_var': min_var, 'avg_var': avg_var,
-                                    'count': 0, 'max': 0, 'min': 0xFFFF, 'avg': 0}
-            update_panel_data()
+            def add_hop_thread():
+                #cur_row = total_data['row']
+                cur_row = int(name_hop.split('_')[1]) + 1
+                #total_data['row'] += 1
+                tk.Label(total_data['panel'] , relief='groove', text=name_hop).grid(row=cur_row, column=0, padx=1,
+                                                                                    pady=1, sticky=tk.NSEW)
+                max_var = tk.Label(total_data['panel'] , relief='groove')
+                min_var = tk.Label(total_data['panel'] , relief='groove')
+                avg_var = tk.Label(total_data['panel'] , relief='groove')
+                max_var.grid(row=cur_row, column=1, padx=1, pady=1, sticky=tk.NSEW)
+                min_var.grid(row=cur_row, column=2, padx=1, pady=1, sticky=tk.NSEW)
+                avg_var.grid(row=cur_row, column=3, padx=1, pady=1, sticky=tk.NSEW)
+                total_data[name_hop] = {'max_var': max_var, 'min_var': min_var, 'avg_var': avg_var,
+                                        'count': 0, 'max': 0, 'min': 0xFFFF, 'avg': 0}
+                self.th_add_hop = None
+                update_panel_data()
+            if self.th_add_hop:
+                self.th_add_hop.join()
+            self.th_add_hop = threading.Thread(target=add_hop_thread)
+            self.th_add_hop.start()
         else:
             update_panel_data()
 
