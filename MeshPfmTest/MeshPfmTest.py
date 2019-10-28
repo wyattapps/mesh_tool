@@ -8,6 +8,8 @@ import threading
 import re
 import time
 import datetime
+import matplotlib.pyplot as plt
+import numpy as np
 
 class Application(tk.Frame):
     def __init__(self, master=None):
@@ -48,8 +50,8 @@ class Application(tk.Frame):
         self.send_count_label = tk.StringVar()
         tk.Label(common_panel, relief='groove', textvariable=self.send_count_label).grid(row=3, column=1, padx=3, pady=0,
                 sticky=tk.NSEW)
-        tk.Button(common_panel, text='Auto Test', command=self.auto_test).grid(row=3, column=2, padx=1, pady=1,
-                sticky=tk.NSEW)
+        test_button = tk.Button(common_panel, text='Auto Test', command=lambda: self.auto_test(test_button))
+        test_button.grid(row=3, column=2, padx=1, pady=1, sticky=tk.NSEW)
         # valiable
         self.send_count = 0
         self.panel_row = 0
@@ -61,6 +63,7 @@ class Application(tk.Frame):
         self.th_add_server = None
         self.th_add_total = None
         self.th_add_hop = None
+        self.auto_test_flag = True
         # status bar
         self.status = tk.StringVar()
         self.status.set('COM Closed')
@@ -101,6 +104,18 @@ class Application(tk.Frame):
             self.log_window.config(yscrollcommand=scroll.set)
             tk.Button(new_log_win, text='Clear', command=lambda: self.log_window.delete(1.0, tk.END)).grid(row=1,
                         column=5, padx=1, pady=3, sticky=tk.NSEW)
+            def save_log():
+                data_save = self.log_window.get(1.0, tk.END)
+                #def dump_file(data_save):
+                timestamp = datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+                file_name = 'Log_%s.txt' % timestamp
+                #print(file_name)
+                f = open(file_name, 'a')
+                f.write(data_save)
+                f.close()
+                #threading.Thread(target=dump_file, args=(data_save,)).start()
+            tk.Button(new_log_win, text='Save', command=save_log).grid(row=1,
+                        column=4, padx=1, pady=3, sticky=tk.NSEW)
             self.mySerFlag = True
             self.status.set('%s Open' % ser_name)
             th = threading.Thread(target=self.rcv_data)
@@ -156,13 +171,13 @@ class Application(tk.Frame):
                 self.panel_row += 1
             server_panel.grid(row=self.panel_row, column=self.panel_column, sticky=tk.NSEW)
             # line 1
-            tk.Label(server_panel, relief='solid', text='Address', width=8).grid(row=0, column=0, padx=1, pady=1,
+            tk.Label(server_panel, relief='solid', text='Address', width=10).grid(row=0, column=0, padx=1, pady=1,
                     sticky=tk.NSEW)
-            tk.Label(server_panel, relief='solid', text='Rcv Count', width=8).grid(row=0, column=1, padx=1, pady=1,
+            tk.Label(server_panel, relief='solid', text='Rcv Count', width=10).grid(row=0, column=1, padx=1, pady=1,
                     sticky=tk.NSEW)
-            tk.Label(server_panel, relief='solid', text='Lost Rate', width=8).grid(row=0, column=2, padx=1, pady=1,
+            tk.Label(server_panel, relief='solid', text='Lost Rate', width=10).grid(row=0, column=2, padx=1, pady=1,
                     sticky=tk.NSEW)
-            tk.Label(server_panel, relief='solid', text='Time Use', width=8).grid(row=0, column=3, padx=1, pady=1, sticky=tk.NSEW)
+            tk.Label(server_panel, relief='solid', text='Time Use', width=10).grid(row=0, column=3, padx=1, pady=1, sticky=tk.NSEW)
             tk.Label(server_panel, relief='groove', text=update_data['addr'], width=8, bg='yellow').grid(row=1, column=0, padx=1, pady=1,
                     sticky=tk.NSEW)
             rcv_count_var = tk.Label(server_panel, relief='groove')
@@ -172,9 +187,9 @@ class Application(tk.Frame):
             lost_rate_var.grid(row=1, column=2, padx=1, pady=1, sticky=tk.NSEW)
             time_use_var.grid(row=1, column=3, padx=1, pady=1, sticky=tk.NSEW)
 
-            tk.Label(server_panel, relief='solid', text='HopCome', width=8).grid(row=2, column=0, padx=1, pady=1,
+            tk.Label(server_panel, relief='solid', text='HopCome').grid(row=2, column=0, padx=1, pady=1,
                     sticky=tk.NSEW)
-            tk.Label(server_panel, relief='solid', text='HopBack', width=8).grid(row=2, column=1, padx=1, pady=1,
+            tk.Label(server_panel, relief='solid', text='HopBack').grid(row=2, column=1, padx=1, pady=1,
                     sticky=tk.NSEW)
             tk.Label(server_panel, relief='solid', text='Min').grid(row=2, column=2, padx=1, pady=1, sticky=tk.NSEW)
             tk.Label(server_panel, relief='solid', text='Avg').grid(row=2, column=3, padx=1, pady=1, sticky=tk.NSEW)
@@ -234,9 +249,6 @@ class Application(tk.Frame):
                 total_panel.grid(row=0, column=self.total_column, sticky=tk.NSEW)
                 self.total_column += 1
                 total_data = dict()
-                total_data['raw_data'] = []
-                total_data['stat_data'] = [0]*30
-                #total_data['row'] = 1
                 total_data['panel'] = total_panel
                 tk.Label(total_panel, relief='solid', text='Hop', width=8).grid(row=0, column=0, padx=1, pady=1,
                         sticky=tk.NSEW)
@@ -247,7 +259,6 @@ class Application(tk.Frame):
                 tk.Label(total_panel, relief='solid', text='Avg', width=8).grid(row=0, column=3, padx=1, pady=1,
                                                                                 sticky=tk.NSEW)
                 self.server_dict[name_len] = total_data
-                #self.th_lock.release()
                 self.th_add_total = None
                 self.update_total_panel(name_len, name_hop, cur_time)
 
@@ -273,7 +284,7 @@ class Application(tk.Frame):
             #total_data['raw_data'].append(time_use)
             #if len(total_data['raw_data']) == 101:
             #    pass
-            total_data['stat_data'][stat_index] += 1
+            hop_data['stat_data'][stat_index] += 1
             hop_data['count'] += 1
             if hop_data['max'] < time_use:
                 hop_data['max'] = time_use
@@ -286,9 +297,7 @@ class Application(tk.Frame):
 
         if total_data.get(name_hop, 'no') == 'no':
             def add_hop_thread():
-                #cur_row = total_data['row']
                 cur_row = int(name_hop.split('_')[1]) + 1
-                #total_data['row'] += 1
                 tk.Label(total_data['panel'] , relief='groove', text=name_hop).grid(row=cur_row, column=0, padx=1,
                                                                                     pady=1, sticky=tk.NSEW)
                 max_var = tk.Label(total_data['panel'] , relief='groove')
@@ -297,8 +306,19 @@ class Application(tk.Frame):
                 max_var.grid(row=cur_row, column=1, padx=1, pady=1, sticky=tk.NSEW)
                 min_var.grid(row=cur_row, column=2, padx=1, pady=1, sticky=tk.NSEW)
                 avg_var.grid(row=cur_row, column=3, padx=1, pady=1, sticky=tk.NSEW)
-                total_data[name_hop] = {'max_var': max_var, 'min_var': min_var, 'avg_var': avg_var,
-                                        'count': 0, 'max': 0, 'min': 0xFFFF, 'avg': 0}
+                def draw_pic():
+                    stat_data = total_data[name_hop]['stat_data']
+                    X = range(30)
+                    Y = np.array(stat_data) / total_data[name_hop]['count']
+                    plt.bar(X, Y, facecolor='#9999ff', edgecolor='white')
+                    plt.xlabel('time(10ms), count: %d' % total_data[name_hop]['count'])
+                    plt.ylabel('percent')
+                    plt.title('%s_%s_figure' % (name_len, name_hop))
+                    plt.show()
+                tk.Button(total_data['panel'], text='Draw', command=draw_pic).grid(row=cur_row, column=4, padx=1,
+                                                                                   pady=1, sticky=tk.NSEW)
+                total_data[name_hop] = {'max_var': max_var, 'min_var': min_var, 'avg_var': avg_var, 'count': 0,
+                                        'max': 0, 'min': 0xFFFF, 'avg': 0, 'raw_data': [], 'stat_data': [0]*30}
                 self.th_add_hop = None
                 update_panel_data()
             if self.th_add_hop:
@@ -325,10 +345,20 @@ class Application(tk.Frame):
         order_out = [0xAA, int(self.len_entry.get())]
         self.mySerial.write(bytearray(order_out))
 
-    def auto_test(self):
-        self.msg_send()
-        len = int(self.len_entry.get())
-        threading.Timer(len // 4, self.auto_test).start()
+    def msg_send_test(self):
+        if self.auto_test_flag:
+            self.msg_send()
+            len = int(self.len_entry.get())
+            threading.Timer(len // 4, self.msg_send_test).start()
+
+    def auto_test(self, test_button):
+        if test_button['text'] == 'Auto Test':
+            self.auto_test_flag = True
+            self.msg_send_test()
+            test_button.config(text='Auto Pause')
+        elif test_button['text'] == 'Auto Pause':
+            self.auto_test_flag = False
+            test_button.config(text='Auto Test')
 
     def update_label(self, mylabel, value):
         changeColor = 'white'
