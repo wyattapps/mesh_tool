@@ -10,6 +10,7 @@ import time
 import datetime
 import matplotlib.pyplot as plt
 import numpy as np
+import math
 
 class Application(tk.Frame):
     def __init__(self, master=None):
@@ -335,8 +336,11 @@ class Application(tk.Frame):
             return
         self.send_count += 1
         if self.send_count % 5000 == 0:
+            cur_len = int(self.len_entry.get())
+            if cur_len == 128:
+                cur_len = 4
             self.len_entry.delete(0, tk.END)
-            self.len_entry.insert(tk.END, (self.send_count // 5000 + 1) * 8)
+            self.len_entry.insert(tk.END, 2*cur_len)
             for server_data in self.server_dict.values():
                 server_data['max'] = 0
                 server_data['min'] = 0xFFFF
@@ -349,7 +353,10 @@ class Application(tk.Frame):
         if self.auto_test_flag:
             self.msg_send()
             len = int(self.len_entry.get())
-            threading.Timer(len // 4, self.msg_send_test).start()
+            period = len // 4
+            if period > 10:
+                period = 10
+            threading.Timer(period, self.msg_send_test).start()
 
     def auto_test(self, test_button):
         if test_button['text'] == 'Auto Test':
@@ -381,6 +388,5 @@ if __name__ == '__main__':
         root.destroy()
     root.protocol("WM_DELETE_WINDOW", destroy_handle)
     app.mainloop()
-
 
 
