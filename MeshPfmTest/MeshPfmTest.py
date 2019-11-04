@@ -33,9 +33,8 @@ class Application(tk.Frame):
         self.refresh_serial()
         self.mybaudrqate = ttk.Combobox(common_panel, width=10)
         self.mybaudrqate.grid(row=1, column=0, padx=1, pady=3, sticky=tk.NSEW)
-        self.mybaudrqate['value'] = [50, 75, 110, 134, 150, 200, 300, 1200, 1800, 2400, 4800, 9600, 19200, 38400, 57600,
-                115200, 230400, 460800, 500000, 921600]
-        self.mybaudrqate.current(15)
+        self.mybaudrqate['value'] = [115200, 460800, 921600]
+        self.mybaudrqate.current(2)
         tk.Button(common_panel, text='open', width=10, command=self.mesh_serial_open).grid(row=1, column=1, padx=1,
                 pady=3, sticky=tk.NSEW)
         tk.Button(common_panel, text='close', width=10, command=self.mesh_serial_close).grid(row=1, column=2, padx=1,
@@ -259,7 +258,10 @@ class Application(tk.Frame):
                         sticky=tk.NSEW)
                 tk.Label(total_panel, relief='solid', text='Avg', width=8).grid(row=0, column=3, padx=1, pady=1,
                                                                                 sticky=tk.NSEW)
+
                 self.server_dict[name_len] = total_data
+                tk.Button(total_panel, text='DAll', command=lambda: self.draw_pic(self.server_dict[name_len], name_len, 'all')).grid(row=0,
+                        column=4, padx=1, pady=1, sticky=tk.NSEW)
                 self.th_add_total = None
                 self.update_total_panel(name_len, name_hop, cur_time)
 
@@ -279,14 +281,19 @@ class Application(tk.Frame):
                 self.th_add_hop.join()
             hop_data = total_data[name_hop]
             stat_index = time_use // 10
-            if stat_index > 29:
-                stat_index = 29
+
+            #if stat_index > 59:
+            #    stat_index = 59
             #self.th_lock.acquire()
             #total_data['raw_data'].append(time_use)
             #if len(total_data['raw_data']) == 101:
             #    pass
-            hop_data['stat_data'][stat_index] += 1
+            #hop_data['stat_data'][stat_index] += 1
             hop_data['count'] += 1
+            if hop_data['stat_data'].get(stat_index, 'no') == 'no':
+                hop_data['stat_data'][stat_index] = 1
+            else:
+                hop_data['stat_data'][stat_index] += 1
             if hop_data['max'] < time_use:
                 hop_data['max'] = time_use
             if hop_data['min'] > time_use:
@@ -307,19 +314,10 @@ class Application(tk.Frame):
                 max_var.grid(row=cur_row, column=1, padx=1, pady=1, sticky=tk.NSEW)
                 min_var.grid(row=cur_row, column=2, padx=1, pady=1, sticky=tk.NSEW)
                 avg_var.grid(row=cur_row, column=3, padx=1, pady=1, sticky=tk.NSEW)
-                def draw_pic():
-                    stat_data = total_data[name_hop]['stat_data']
-                    X = range(30)
-                    Y = np.array(stat_data) / total_data[name_hop]['count']
-                    plt.bar(X, Y, facecolor='#9999ff', edgecolor='white')
-                    plt.xlabel('time(10ms), count: %d' % total_data[name_hop]['count'])
-                    plt.ylabel('percent')
-                    plt.title('%s_%s_figure' % (name_len, name_hop))
-                    plt.show()
-                tk.Button(total_data['panel'], text='Draw', command=draw_pic).grid(row=cur_row, column=4, padx=1,
-                                                                                   pady=1, sticky=tk.NSEW)
                 total_data[name_hop] = {'max_var': max_var, 'min_var': min_var, 'avg_var': avg_var, 'count': 0,
-                                        'max': 0, 'min': 0xFFFF, 'avg': 0, 'raw_data': [], 'stat_data': [0]*30}
+                                        'max': 0, 'min': 0xFFFF, 'avg': 0, 'raw_data': [], 'stat_data': {}}
+                tk.Button(total_data['panel'], text='Draw', command=lambda: self.draw_pic(total_data, name_len, name_hop)).grid(row=cur_row,
+                        column=4, padx=1, pady=1, sticky=tk.NSEW)
                 self.th_add_hop = None
                 update_panel_data()
             if self.th_add_hop:
@@ -328,6 +326,52 @@ class Application(tk.Frame):
             self.th_add_hop.start()
         else:
             update_panel_data()
+
+    def draw_pic(self, total_data, name_len, name_hop):
+        stat_data = [0]*60
+        stat_count = 0
+        if name_hop == 'all':
+            stat_data_dict = dict()
+            min_x = 1000
+            for key1 in total_data.keys():
+                if key1 == 'panel':
+                    continue
+                hop_stat_data_dict = total_data[key1]['stat_data']
+                stat_count += total_data[key1]['count']
+                for key2 in hop_stat_data_dict.keys():
+                    if stat_data_dict.get(key2, 'no') == 'no':
+                        stat_data_dict[key2] = total_data[key1]['stat_data'][key2]
+                    else:
+                        stat_data_dict[key2] = total_data[key1]['stat_data'][key2]
+                    if key2 < min_x:
+                        min_x = key2
+
+            for key in stat_data_dict.keys():
+                index = key - min_x
+                if index > 59:
+                    index = 59
+                stat_data[index] += stat_data_dict[key]
+
+        else:
+            stat_data_dict = total_data[name_hop]['stat_data']
+            min_x = 1000
+            stat_count = total_data[name_hop]['count']
+            for key in stat_data_dict.keys():
+                if key < min_x:
+                    min_x = key
+
+            for key in stat_data_dict.keys():
+                index = key - min_x
+                if index > 59:
+                    index = 59
+                stat_data[index] += stat_data_dict[key]
+        X = range(min_x-1, min_x+59)
+        Y = np.array(stat_data) / stat_count
+        plt.bar(X, Y, facecolor='#9999ff', edgecolor='white')
+        plt.xlabel('time(10ms), count: %d' % stat_count)
+        plt.ylabel('percent')
+        plt.title('%s_%s_figure' % (name_len, name_hop))
+        plt.show()
 
     def msg_send(self):
         if not self.mySerial:
