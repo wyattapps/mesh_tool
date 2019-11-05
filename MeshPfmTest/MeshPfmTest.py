@@ -334,7 +334,7 @@ class Application(tk.Frame):
             stat_data_dict = dict()
             min_x = 1000
             for key1 in total_data.keys():
-                if key1 == 'panel':
+                if key1.split('_')[0] != 'hop':
                     continue
                 hop_stat_data_dict = total_data[key1]['stat_data']
                 stat_count += total_data[key1]['count']
@@ -432,5 +432,4 @@ if __name__ == '__main__':
         root.destroy()
     root.protocol("WM_DELETE_WINDOW", destroy_handle)
     app.mainloop()
-
 
