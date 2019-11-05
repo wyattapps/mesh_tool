@@ -365,7 +365,7 @@ class Application(tk.Frame):
                 if index > 59:
                     index = 59
                 stat_data[index] += stat_data_dict[key]
-        X = range(min_x-1, min_x+59)
+        X = range(min_x, min_x+60, 1)
         Y = np.array(stat_data) / stat_count
         plt.bar(X, Y, facecolor='#9999ff', edgecolor='white')
         plt.xlabel('time(10ms), count: %d' % stat_count)
