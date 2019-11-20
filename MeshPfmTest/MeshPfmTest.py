@@ -56,7 +56,7 @@ class Application(tk.Frame):
         self.send_count = 0
         self.panel_row = 0
         self.panel_column = 0
-        self.total_column = 1
+
         self.server_dict = dict()
         self.log_window = None
         self.th_lock = threading.Lock()
@@ -226,6 +226,8 @@ class Application(tk.Frame):
         server_data['count'] += 1
         cur_time = int(update_data['diff'])
         cur_len = int(update_data['len'])
+        if cur_len == 0:
+            cur_len = 128
         cur_ttl1 = 11-int(update_data['ttl1'])
         cur_ttl2 = 11-int(update_data['ttl2'])
         if server_data['min'] > cur_time:
@@ -246,8 +248,9 @@ class Application(tk.Frame):
         if self.server_dict.get(name_len, 'no') == 'no':
             def add_total_thread():
                 total_panel = tk.LabelFrame(self, text=name_len)
-                total_panel.grid(row=0, column=self.total_column, sticky=tk.NSEW)
-                self.total_column += 1
+                total_column = math.log2(cur_len)-2
+                total_panel.grid(row=0, column=total_column, sticky=tk.NSEW)
+
                 total_data = dict()
                 total_data['panel'] = total_panel
                 tk.Label(total_panel, relief='solid', text='Hop', width=8).grid(row=0, column=0, padx=1, pady=1,
@@ -432,4 +435,3 @@ if __name__ == '__main__':
         root.destroy()
     root.protocol("WM_DELETE_WINDOW", destroy_handle)
     app.mainloop()
-
