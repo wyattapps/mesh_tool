@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 import tkinter as tk
 from tkinter import ttk
 import serial
@@ -16,6 +15,7 @@ import os
 import pickle
 from matplotlib.ticker import MaxNLocator
 from collections import namedtuple
+import socket
 
 class Application(tk.Frame):
     def __init__(self, master=None):
@@ -29,21 +29,50 @@ class Application(tk.Frame):
         # common panel
         common_panel = tk.LabelFrame(self, text='common')
         common_panel.grid(row=0, column=0, padx=1, pady=3, sticky=tk.NSEW)
-        self.com = ttk.Combobox(common_panel)
+        # uart panel
+        uart_panel = tk.Frame(common_panel)
+        uart_panel.grid(row=0, column=0, columnspan=3, padx=1, pady=3, sticky=tk.NSEW)
+        self.com = ttk.Combobox(uart_panel)
         self.com.grid(row=0, column=0, columnspan=2, padx=1, pady=3, sticky=tk.NSEW)
         self.mySerial = None
         self.mySerFlag = None
-        tk.Button(common_panel, text='refresh', width=10, command=self.refresh_serial).grid(row=0, column=2, padx=1,
+        tk.Button(uart_panel, text='refresh', width=10, command=self.refresh_serial).grid(row=0, column=2, padx=1,
                 pady=3, sticky=tk.NSEW)
         self.refresh_serial()
-        self.mybaudrqate = ttk.Combobox(common_panel, width=10)
+        self.mybaudrqate = ttk.Combobox(uart_panel, width=10)
         self.mybaudrqate.grid(row=1, column=0, padx=1, pady=3, sticky=tk.NSEW)
         self.mybaudrqate['value'] = [115200, 460800, 921600]
         self.mybaudrqate.current(2)
-        tk.Button(common_panel, text='open', width=10, command=self.mesh_serial_open).grid(row=1, column=1, padx=1,
+        tk.Button(uart_panel, text='open', width=10, command=self.mesh_serial_open).grid(row=1, column=1, padx=1,
                 pady=3, sticky=tk.NSEW)
-        tk.Button(common_panel, text='close', width=10, command=self.mesh_serial_close).grid(row=1, column=2, padx=1,
+        tk.Button(uart_panel, text='close', width=10, command=self.mesh_serial_close).grid(row=1, column=2, padx=1,
                 pady=3, sticky=tk.NSEW)
+        self.com.bind('<<ComboboxSelected>>', self.uart_ip_switch_bind)
+        # ip panel
+        self.ip_panel = tk.Frame(common_panel)
+        self.ip_panel.grid(row=0, column=0, columnspan=3, padx=1, pady=3, sticky=tk.NSEW)
+        self.ip = ttk.Combobox(self.ip_panel)
+        self.ip.grid(row=0, column=0, columnspan=2, padx=1, pady=3, sticky=tk.NSEW)
+        self.ip['value'] = ['127.0.0.1', '192.168.1.1', 'Switch to UART']
+        self.ip.current(0)
+
+        self.client_server = ttk.Combobox(self.ip_panel, width=10)
+        self.client_server.grid(row=0, column=2, padx=1, pady=3, sticky=tk.NSEW)
+        self.client_server['value'] = ['client', 'server']
+        self.client_server.current(0)
+
+        self.port = ttk.Combobox(self.ip_panel, width=10)
+        self.port.grid(row=1, column=0, padx=1, pady=3, sticky=tk.NSEW)
+        self.port['value'] = ['8080', '8081']
+        self.port.current(0)
+        tk.Button(self.ip_panel, text='connect', width=10, command=self.mesh_wifi_connect).grid(row=1, column=1, padx=1,
+                pady=3, sticky=tk.NSEW)
+        tk.Button(self.ip_panel, text='disconnect', width=10, command=self.mesh_wifi_disconnect).grid(row=1, column=2, padx=1,
+                pady=3, sticky=tk.NSEW)
+        self.ip_panel.grid_forget()
+        self.cur_is_uart = True
+        self.mysocket_flag = True
+        self.ip.bind('<<ComboboxSelected>>', self.uart_ip_switch_bind)
         # operate panel
         tk.Label(common_panel, relief='solid', text='Data Len').grid(row=2, column=0, padx=3, pady=0, sticky=tk.NSEW)
         tk.Label(common_panel, relief='solid', text='Count').grid(row=2, column=1, padx=3, pady=0, sticky=tk.NSEW)
@@ -97,42 +126,48 @@ class Application(tk.Frame):
                 if current_com.split()[0] == ser_list[index].device:
                     current_index = index
                     break
+
+        ser_list.append('Switch to IP')
         self.com['value'] = ser_list
         if len(ser_list):
             self.com.current(current_index)
+
+    def add_log_window(self, log_title):
+        # add log windows
+        new_log_win = tk.Toplevel(self)
+        new_log_win.title(log_title)
+        frm = tk.LabelFrame(new_log_win)
+        frm.grid(row=0, column=1, columnspan=6, padx=1, pady=3, sticky=tk.NSEW)
+        log_window = tk.Text(frm, bg='white', height=60)
+        log_window.pack(side=tk.LEFT, fill=tk.Y)
+        scroll = tk.Scrollbar(frm)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        scroll.config(command=log_window.yview)
+        log_window.config(yscrollcommand=scroll.set)
+        tk.Button(new_log_win, text='Clear', command=lambda: log_window.delete(1.0, tk.END)).grid(row=1,
+                    column=5, padx=1, pady=3, sticky=tk.NSEW)
+        def save_log():
+            data_save = log_window.get(1.0, tk.END)
+            #def dump_file(data_save):
+            timestamp = datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+            file_name = 'Log_%s.txt' % timestamp
+            #print(file_name)
+            f = open(file_name, 'a')
+            f.write(data_save)
+            f.close()
+            #threading.Thread(target=dump_file, args=(data_save,)).start()
+        tk.Button(new_log_win, text='Save', command=save_log).grid(row=1,
+                    column=4, padx=1, pady=3, sticky=tk.NSEW)
+        return log_window
 
     def mesh_serial_open(self):
         ser_name = self.com.get().split()[0]
         if self.mySerial:
             self.mySerial.close()
-
+        self.log_window = self.add_log_window(self.mySerial)
         self.mySerial = serial.Serial(ser_name, int(self.mybaudrqate.get()))
         if self.mySerial.isOpen():
-            # add log windows
-            new_log_win = tk.Toplevel(self)
-            new_log_win.title(self.mySerial)
-            frm = tk.LabelFrame(new_log_win)
-            frm.grid(row=0, column=1, columnspan=6, padx=1, pady=3, sticky=tk.NSEW)
-            self.log_window = tk.Text(frm, bg='white', height=60)
-            self.log_window.pack(side=tk.LEFT, fill=tk.Y)
-            scroll = tk.Scrollbar(frm)
-            scroll.pack(side=tk.RIGHT, fill=tk.Y)
-            scroll.config(command=self.log_window.yview)
-            self.log_window.config(yscrollcommand=scroll.set)
-            tk.Button(new_log_win, text='Clear', command=lambda: self.log_window.delete(1.0, tk.END)).grid(row=1,
-                        column=5, padx=1, pady=3, sticky=tk.NSEW)
-            def save_log():
-                data_save = self.log_window.get(1.0, tk.END)
-                #def dump_file(data_save):
-                timestamp = datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-                file_name = 'Log_%s.txt' % timestamp
-                #print(file_name)
-                f = open(file_name, 'a')
-                f.write(data_save)
-                f.close()
-                #threading.Thread(target=dump_file, args=(data_save,)).start()
-            tk.Button(new_log_win, text='Save', command=save_log).grid(row=1,
-                        column=4, padx=1, pady=3, sticky=tk.NSEW)
+
             self.mySerFlag = True
             self.status.set('%s Open' % ser_name)
             th = threading.Thread(target=self.rcv_data)
@@ -612,6 +647,63 @@ class Application(tk.Frame):
         plt.title('Avg Mesh Latency - segmented')
         plt.legend()
         plt.show()
+
+    def wifi_client_process(self):
+        ip_port = (self.ip.get(), int(self.port.get()))
+        BUFSIZE=1024
+        s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        s.connect_ex(ip_port)
+        count = 0
+        while self.mysocket_flag:
+            msg=str(count)
+            count += 1
+            if len(msg) == 0:continue
+            s.send(msg.encode('utf-8'))
+            time.sleep(1)
+            #feedback=s.recv(BUFSIZE)
+            #print(feedback.decode('utf-8'))
+        s.close()
+
+    def wifi_server_process(self):
+        while self.mysocket_flag:
+            ip_port = (self.ip.get(), int(self.port.get()))
+            BUFSIZE=1024
+            s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            s.bind(ip_port)
+            s.listen(5)
+            wifi_log_win = dict()
+            while self.mysocket_flag:
+                conn,addr=s.accept()
+                if wifi_log_win.get(addr[0], 'no') == 'no':
+                    wifi_log_win[addr[0]] = self.add_log_window(s)
+                print('receive: %s' % addr[0])
+                while self.mysocket_flag:
+                    msg=conn.recv(BUFSIZE)
+                    if len(msg) == 0:break
+                    wifi_log_win[addr[0]].insert(tk.END, msg.decode('utf-8', 'ignore'))
+                    wifi_log_win[addr[0]].see(tk.END)
+                    conn.send(msg.upper())
+                conn.close()
+            s.close()
+
+    def mesh_wifi_connect(self):
+        if self.client_server.get() == 'client':
+            self.mysocket_flag = True
+            threading.Thread(target=self.wifi_client_process).start()
+        else:
+            self.mysocket_flag = True
+            threading.Thread(target=self.wifi_server_process).start()
+
+    def mesh_wifi_disconnect(self):
+        self.mysocket_flag = False
+
+    def uart_ip_switch_bind(self, *args):
+        if (self.cur_is_uart):
+            self.ip_panel.grid(row=0, column=0, columnspan=3, padx=1, pady=3, sticky=tk.NSEW)
+            self.cur_is_uart = False
+        else:
+            self.ip_panel.grid_forget()
+            self.cur_is_uart = True
 
 if __name__ == '__main__':
     root = tk.Tk()
