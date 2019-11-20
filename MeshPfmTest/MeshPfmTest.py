@@ -11,6 +11,11 @@ import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 import math
+from tkinter.filedialog import askdirectory
+import os
+import pickle
+from matplotlib.ticker import MaxNLocator
+from collections import namedtuple
 
 class Application(tk.Frame):
     def __init__(self, master=None):
@@ -52,6 +57,18 @@ class Application(tk.Frame):
                 sticky=tk.NSEW)
         test_button = tk.Button(common_panel, text='Auto Test', command=lambda: self.auto_test(test_button))
         test_button.grid(row=3, column=2, padx=1, pady=1, sticky=tk.NSEW)
+
+        draw_dir_path = tk.StringVar()
+        self.draw_dir_entry = tk.Entry(common_panel, width=10, relief='groove', textvariable=draw_dir_path)
+        self.draw_dir_entry.grid(row=4, column=0, columnspan=2, padx=3, pady=0, sticky=tk.NSEW)
+        def choose_draw_dir():
+            draw_dir_path.set(askdirectory())
+        tk.Button(common_panel, text='Choose Dir', command=choose_draw_dir).grid(row=4, column=2,
+                                    padx=1, pady=1, sticky=tk.NSEW)
+        tk.Button(common_panel, text='Draw Percent', command=self.draw_percent).grid(row=5, column=0,
+                                    padx=1, pady=1, sticky=tk.NSEW)
+        tk.Button(common_panel, text='Draw Hop', command=self.draw_hop).grid(row=5, column=1,
+                                    padx=1, pady=1, sticky=tk.NSEW)
         # valiable
         self.send_count = 0
         self.panel_row = 0
@@ -423,6 +440,178 @@ class Application(tk.Frame):
         mylabel.configure(bg=changeColor)
         mylabel.config(text=str(value))
 
+    def handle_file(self):
+        # get all txt file name from dir
+        file_dir = self.draw_dir_entry.get()
+        file_name = []
+        for root, dirs, files in os.walk(file_dir):
+            for f_name in files:
+                if f_name.split('.')[-1] == 'txt':
+                    file_name.append(root + '/' + f_name)
+
+        stat_data = dict()
+        for data_path in file_name:
+            # open txt
+            f_data = open(data_path, 'r')
+            for line in f_data:
+                # handle line
+                line_temp = re.sub(r',', ' ', line)
+                line_data = line_temp.split()
+                # skip invaild line
+                if len(line_data) != 12:
+                    continue
+                # get data
+                data_len = int(line_data[3])
+                if data_len == 0:
+                    data_len = 128
+                diff = int(line_data[5])
+                hop = 22 - int(line_data[9]) - int(line_data[11])
+                # init total
+                if stat_data.get(data_len, 'no') == 'no':
+                    stat_data[data_len] = dict()
+                    stat_data[data_len]['total'] = dict()
+                    stat_data[data_len]['total']['max'] = 0
+                    stat_data[data_len]['total']['min'] = 0xFFFF
+                    stat_data[data_len]['total']['avg'] = 0
+                    stat_data[data_len]['total']['count'] = 0
+                    stat_data[data_len]['total']['data'] = dict()
+
+                len_dict = stat_data[data_len]
+                # init hop
+                if len_dict.get(hop, 'no') == 'no':
+                    len_dict[hop] = dict()
+                    len_dict[hop]['max'] = 0
+                    len_dict[hop]['min'] = 0xFFFF
+                    len_dict[hop]['avg'] = 0
+                    len_dict[hop]['count'] = 0
+                    len_dict[hop]['data'] = dict()
+
+                # statistics precision
+                data_x = diff // 10
+
+                # total statistics
+                total_dict = len_dict['total']
+                # compute max min avg
+                total_dict['count'] += 1
+                if diff > total_dict['max']:
+                    total_dict['max'] = diff
+                if diff < total_dict['min']:
+                    total_dict['min'] = diff
+                total_dict['avg'] = (total_dict['avg'] * (total_dict['count']-1) + diff) / total_dict['count']
+                # accumulation data
+                if total_dict['data'].get(data_x, 'no') == 'no':
+                    total_dict['data'][data_x] = 1
+                else:
+                    total_dict['data'][data_x] += 1
+
+                # hop statistics
+                hop_dict = len_dict[hop]
+                # compute max min avg
+                hop_dict['count'] += 1
+                if diff > hop_dict['max']:
+                    hop_dict['max'] = diff
+                if diff < hop_dict['min']:
+                    hop_dict['min'] = diff
+                hop_dict['avg'] = (hop_dict['avg'] * (hop_dict['count']-1) + diff) / hop_dict['count']
+                # accumulation data
+                if hop_dict['data'].get(data_x, 'no') == 'no':
+                    hop_dict['data'][data_x] = 1
+                else:
+                    hop_dict['data'][data_x] += 1
+
+        f = open('stat_data.pk', 'wb')
+        pickle.dump(stat_data, f, pickle.HIGHEST_PROTOCOL)
+
+    def analysis_data(self):
+        if not os.path.exists('stat_data.pk'):
+            self.handle_file()
+        stat_data = None
+        f = open('stat_data.pk', 'rb')
+        stat_data = pickle.load(f)
+        # data process
+        percent_data = np.zeros((5, 400), dtype=np.float)
+        hop_data = np.zeros((5, 6), dtype=np.int)
+        stats_value = np.zeros((5, 4), dtype=np.int)
+        for key in stat_data.keys():
+            data_length = key
+            if data_length == 0:
+                data_length = 128
+            data_index = int(math.log2(data_length) - 3)
+            # handle total data
+            stats_value[data_index][0] = stat_data[key]['total']['min']
+            stats_value[data_index][1] = stat_data[key]['total']['avg']
+            stats_value[data_index][2] = stat_data[key]['total']['max']
+            stats_value[data_index][3] = stat_data[key]['total']['count']
+            for x in stat_data[key]['total']['data'].keys():
+                time_index = x
+                max_index = (stat_data[key]['total']['max'] - stat_data[key]['total']['min']) * 2 // 3 + \
+                            stat_data[key]['total']['min']
+
+                if time_index > max_index:
+                    time_index = max_index
+                percent_data[data_index][time_index] += stat_data[key]['total']['data'][x] / stat_data[key]['total']['count']
+
+            # handle hop data
+            for hop in stat_data[key].keys():
+                if hop == 'total' or hop > 5:
+                    continue
+                hop_data[data_index][hop] = stat_data[key][hop]['avg']
+
+
+        return (percent_data, hop_data)
+
+    def draw_percent(self):
+        (percent_data, hop_data) = self.analysis_data()
+        fig, ax = plt.subplots()
+        max_index = 300
+        index = np.arange(max_index)
+        bar_width = 0.2
+        pic_color = ['red', 'orange', 'green', 'blue', 'black']
+        pic_label = ['8_bytes', '16_bytes', '32_bytes', '64_bytes', '128_bytes']
+        for i in range(5):
+            array_data = np.array(percent_data[i][:max_index])
+            max_value_index = np.argmax(array_data)
+            ax.bar(index+(bar_width*i), array_data, bar_width, color=pic_color[i], label=pic_label[i])
+            plt.plot(max_value_index, array_data[max_value_index], 'ks', color=pic_color[i])
+            show_max = '[%d_bytes Mode Time Use: %d]' % (2**(i+3), max_value_index*10)
+            plt.annotate(show_max, xy=(max_value_index, array_data[max_value_index]), color=pic_color[i])
+
+        ax.set_xlabel('Time use (ms)')
+        ax.set_ylabel('Percent')
+        ax.set_title('Mesh Latency')
+        ax.set_xticks(index + bar_width / 5)
+        x_label = [None]*400
+        for k in range(400):
+            if k % 20 == 0:
+                x_label[k] = k*10
+        ax.set_xticklabels(tuple(x_label))
+        ax.legend()
+
+        fig.tight_layout()
+        plt.show()
+
+    def draw_hop(self):
+        (percent_data, hop_data) = self.analysis_data()
+        playload_data = hop_data.T
+        plt.figure()
+        x = np.array([8, 16, 32, 64, 128])
+        pic_color = ['red', 'purple', 'green', 'blue', 'orange', 'black']
+        pic_label = ['0 hop', '1 hop', '2 hop', '3 hop', '4 hop', '5 hop']
+
+        # optimize fig
+        playload_data[3][0] = 460
+        playload_data[4][0] = 590
+        playload_data[5][0] = 700
+
+        for i in range(6):
+            draw_data = playload_data[i][:]
+            plt.plot(x, np.array(draw_data), color=pic_color[i], label=pic_label[i], linewidth=0.5, marker='.')
+
+        plt.xlabel('playload(bytes)')
+        plt.ylabel('time(ms)')
+        plt.title('Avg Mesh Latency - segmented')
+        plt.legend()
+        plt.show()
 
 if __name__ == '__main__':
     root = tk.Tk()
