@@ -53,17 +53,17 @@ class Application(tk.Frame):
         self.ip_panel.grid(row=0, column=0, columnspan=3, padx=1, pady=3, sticky=tk.NSEW)
         self.ip = ttk.Combobox(self.ip_panel)
         self.ip.grid(row=0, column=0, columnspan=2, padx=1, pady=3, sticky=tk.NSEW)
-        self.ip['value'] = ['127.0.0.1', '192.168.1.1', 'Switch to UART']
+        self.ip['value'] = ['172.16.50.28', '127.0.0.1', '192.168.1.1', 'Switch to UART']
         self.ip.current(0)
 
         self.client_server = ttk.Combobox(self.ip_panel, width=10)
         self.client_server.grid(row=0, column=2, padx=1, pady=3, sticky=tk.NSEW)
-        self.client_server['value'] = ['client', 'server']
+        self.client_server['value'] = ['server', 'client']
         self.client_server.current(0)
 
         self.port = ttk.Combobox(self.ip_panel, width=10)
         self.port.grid(row=1, column=0, padx=1, pady=3, sticky=tk.NSEW)
-        self.port['value'] = ['8080', '8081']
+        self.port['value'] = ['8000', '8080', '8081']
         self.port.current(0)
         tk.Button(self.ip_panel, text='connect', width=10, command=self.mesh_wifi_connect).grid(row=1, column=1, padx=1,
                 pady=3, sticky=tk.NSEW)
@@ -110,6 +110,7 @@ class Application(tk.Frame):
         self.th_add_total = None
         self.th_add_hop = None
         self.auto_test_flag = True
+        self.wifi_client_info = dict()
         # status bar
         self.status = tk.StringVar()
         self.status.set('COM Closed')
@@ -664,27 +665,42 @@ class Application(tk.Frame):
             #print(feedback.decode('utf-8'))
         s.close()
 
-    def wifi_server_process(self):
+    def wifi_server_process(self, key):
+        s = self.wifi_client_info[key]['client_socks']
+        log = self.wifi_client_info[key]['log_windows']
         while self.mysocket_flag:
-            ip_port = (self.ip.get(), int(self.port.get()))
-            BUFSIZE=1024
-            s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-            s.bind(ip_port)
-            s.listen(5)
-            wifi_log_win = dict()
-            while self.mysocket_flag:
-                conn,addr=s.accept()
-                if wifi_log_win.get(addr[0], 'no') == 'no':
-                    wifi_log_win[addr[0]] = self.add_log_window(s)
-                print('receive: %s' % addr[0])
-                while self.mysocket_flag:
-                    msg=conn.recv(BUFSIZE)
-                    if len(msg) == 0:break
-                    wifi_log_win[addr[0]].insert(tk.END, msg.decode('utf-8', 'ignore'))
-                    wifi_log_win[addr[0]].see(tk.END)
-                    conn.send(msg.upper())
-                conn.close()
-            s.close()
+            try:
+                data = s.recv(1024)
+                if data:
+                    log.insert(tk.END, data.decode('utf-8', 'ignore'))
+                    log.see(tk.END)
+                else:
+                    log.destroy()
+                    self.wifi_client_info.pop(key)
+            except Exception as e:
+                continue
+            #s.send(data.upper())
+
+    def mesh_wifi_server_main(self):
+        ip_port = (self.ip.get(), int(self.port.get()))
+        tcpSerSock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        tcpSerSock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        tcpSerSock.bind(ip_port)
+        tcpSerSock.listen(5)
+        my_socks = []
+        print('waiting for connecting...')
+        while self.mysocket_flag:
+            clientSock,addr = tcpSerSock.accept()
+            print('connect: %s' % addr[0])
+            clientSock.setblocking(0)
+
+            if self.wifi_client_info.get(addr[0], 'no') == 'no':
+                self.wifi_client_info[addr[0]] = dict()
+                self.wifi_client_info[addr[0]]['client_socks'] = clientSock
+                self.wifi_client_info[addr[0]]['log_windows'] = self.add_log_window(addr[0])
+                threading.Thread(target=self.wifi_server_process, args=(addr[0],)).start()
+            else:
+                self.wifi_client_info[addr[0]]['client_socks'] = clientSock
 
     def mesh_wifi_connect(self):
         if self.client_server.get() == 'client':
@@ -692,7 +708,7 @@ class Application(tk.Frame):
             threading.Thread(target=self.wifi_client_process).start()
         else:
             self.mysocket_flag = True
-            threading.Thread(target=self.wifi_server_process).start()
+            threading.Thread(target=self.mesh_wifi_server_main).start()
 
     def mesh_wifi_disconnect(self):
         self.mysocket_flag = False
