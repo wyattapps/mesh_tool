@@ -53,8 +53,6 @@ class Application(tk.Frame):
         self.ip_panel.grid(row=0, column=0, columnspan=3, padx=1, pady=3, sticky=tk.NSEW)
         self.ip = ttk.Combobox(self.ip_panel)
         self.ip.grid(row=0, column=0, columnspan=2, padx=1, pady=3, sticky=tk.NSEW)
-        self.ip['value'] = ['172.16.50.28', '127.0.0.1', '192.168.1.1', 'Switch to UART']
-        self.ip.current(0)
 
         self.client_server = ttk.Combobox(self.ip_panel, width=10)
         self.client_server.grid(row=0, column=2, padx=1, pady=3, sticky=tk.NSEW)
@@ -111,6 +109,7 @@ class Application(tk.Frame):
         self.th_add_hop = None
         self.auto_test_flag = True
         self.wifi_client_info = dict()
+        self.myTcpServer = None
         # status bar
         self.status = tk.StringVar()
         self.status.set('COM Closed')
@@ -159,16 +158,15 @@ class Application(tk.Frame):
             #threading.Thread(target=dump_file, args=(data_save,)).start()
         tk.Button(new_log_win, text='Save', command=save_log).grid(row=1,
                     column=4, padx=1, pady=3, sticky=tk.NSEW)
-        return log_window
+        return (new_log_win, log_window)
 
     def mesh_serial_open(self):
         ser_name = self.com.get().split()[0]
         if self.mySerial:
             self.mySerial.close()
-        self.log_window = self.add_log_window(self.mySerial)
+        panel, self.log_window = self.add_log_window(self.mySerial)
         self.mySerial = serial.Serial(ser_name, int(self.mybaudrqate.get()))
         if self.mySerial.isOpen():
-
             self.mySerFlag = True
             self.status.set('%s Open' % ser_name)
             th = threading.Thread(target=self.rcv_data)
@@ -666,20 +664,18 @@ class Application(tk.Frame):
         s.close()
 
     def wifi_server_process(self, key):
-        s = self.wifi_client_info[key]['client_socks']
-        log = self.wifi_client_info[key]['log_windows']
-        while self.mysocket_flag:
+        print("start process client:", key)
+        self.wifi_client_info[key]['flag'] = True
+        while self.wifi_client_info[key]['flag']:
             try:
-                data = s.recv(1024)
+                data = self.wifi_client_info[key]['client_socks'].recv(1024)
                 if data:
-                    log.insert(tk.END, data.decode('utf-8', 'ignore'))
-                    log.see(tk.END)
-                else:
-                    log.destroy()
-                    self.wifi_client_info.pop(key)
+                    self.wifi_client_info[key]['log_windows'].insert(tk.END, data.decode('utf-8', 'ignore'))
+                    self.wifi_client_info[key]['log_windows'].see(tk.END)
             except Exception as e:
                 continue
             #s.send(data.upper())
+        print("end process client:", key)
 
     def mesh_wifi_server_main(self):
         ip_port = (self.ip.get(), int(self.port.get()))
@@ -687,7 +683,6 @@ class Application(tk.Frame):
         tcpSerSock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         tcpSerSock.bind(ip_port)
         tcpSerSock.listen(5)
-        my_socks = []
         print('waiting for connecting...')
         while self.mysocket_flag:
             clientSock,addr = tcpSerSock.accept()
@@ -696,11 +691,18 @@ class Application(tk.Frame):
 
             if self.wifi_client_info.get(addr[0], 'no') == 'no':
                 self.wifi_client_info[addr[0]] = dict()
-                self.wifi_client_info[addr[0]]['client_socks'] = clientSock
-                self.wifi_client_info[addr[0]]['log_windows'] = self.add_log_window(addr[0])
-                threading.Thread(target=self.wifi_server_process, args=(addr[0],)).start()
+                self.wifi_client_info[addr[0]]['thread'] = None
             else:
-                self.wifi_client_info[addr[0]]['client_socks'] = clientSock
+                self.wifi_client_info[addr[0]]['panel'].destroy()
+                self.wifi_client_info[addr[0]]['flag'] = False
+
+            self.wifi_client_info[addr[0]]['client_socks'] = clientSock
+            self.wifi_client_info[addr[0]]['panel'], self.wifi_client_info[addr[0]]['log_windows'] = self.add_log_window(addr[0])
+            if self.wifi_client_info[addr[0]]['thread']:
+                self.wifi_client_info[addr[0]]['thread'].join()
+            self.wifi_client_info[addr[0]]['thread'] = threading.Thread(target=self.wifi_server_process, args=(addr[0],))
+            self.wifi_client_info[addr[0]]['thread'].start()
+
 
     def mesh_wifi_connect(self):
         if self.client_server.get() == 'client':
@@ -712,14 +714,26 @@ class Application(tk.Frame):
 
     def mesh_wifi_disconnect(self):
         self.mysocket_flag = False
+        if self.myTcpServer:
+            self.myTcpServer.shutdown()
 
     def uart_ip_switch_bind(self, *args):
         if (self.cur_is_uart):
             self.ip_panel.grid(row=0, column=0, columnspan=3, padx=1, pady=3, sticky=tk.NSEW)
             self.cur_is_uart = False
+            try:
+                s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+                s.connect(('8.8.8.8',80))
+                ip=s.getsockname()[0]
+            finally:
+                s.shutdown(2)
+                s.close()
+            self.ip['value'] = [ip, '127.0.0.1', 'Switch to UART']
+            self.ip.current(0)
         else:
             self.ip_panel.grid_forget()
             self.cur_is_uart = True
+            self.refresh_serial()
 
 if __name__ == '__main__':
     root = tk.Tk()
@@ -729,6 +743,9 @@ if __name__ == '__main__':
         if app.mySerial:
             app.mySerFlag = False
             app.mySerial.close()
+        if app.myTcpServer:
+            app.myTcpServer.shutdown()
+
         root.destroy()
     root.protocol("WM_DELETE_WINDOW", destroy_handle)
     app.mainloop()
